@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <title>Prueba QR / Pagos</title>
+</head>
+
+<body>
+  <h1>Multipagos QR – Público</h1>
+
+  <section>
+    <h2>Buscar Deuda</h2>
+    <label>CI/NIT/Código Cliente: <input id="customer_ref" value="555444"></label>
+    <br>
+    <label>Servicio: <input id="service_id" value="srv_luz"></label>
+    <br>
+    <button id="btnBuscarDeuda">Buscar Deuda</button>
+    <div id="deudaDetalle" style="margin-top:10px"></div>
+  </section>
+
+  <section id="qrSection" style="display:none; margin-top:30px;">
+    <h2>Generar QR para Pago</h2>
+    <div id="qrResult"></div>
+    <button id="btnGenQr">Generar QR</button>
+  </section>
+
+  <section id="pagoSection" style="display:none; margin-top:30px;">
+    <h2>Simular Pago (Genera Comprobante)</h2>
+    <button id="btnPay">Simular Pago</button>
+    <div id="payResult" style="margin-top:10px"></div>
+  </section>
+
+  <script>
+    const base = '';
+    let deudaActual = null;
+
+    document.getElementById('btnBuscarDeuda').addEventListener('click', async () => {
+      const customerRef = document.getElementById('customer_ref').value;
+      const serviceId = document.getElementById('service_id').value;
+      const body = { customer_ref: customerRef, service_id: serviceId };
+      const detalle = document.getElementById('deudaDetalle');
+      detalle.innerHTML = 'Buscando...';
+      document.getElementById('qrSection').style.display = 'none';
+      document.getElementById('pagoSection').style.display = 'none';
+      deudaActual = null;
+      try {
+        const res = await fetch(base + '/pagos/lookup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error('No se encontró deuda');
+        const json = await res.json();
+        deudaActual = json;
+        detalle.innerHTML = `<b>Deuda encontrada:</b><br>
+          <b>ID:</b> ${json.id}<br>
+          <b>Monto:</b> ${json.amount}<br>
+          <b>Periodo:</b> ${json.period}<br>
+          <b>Estado:</b> ${json.status}<br>`;
+        document.getElementById('qrSection').style.display = 'block';
+      } catch (e) {
+        detalle.innerHTML = 'No se encontró deuda para los datos ingresados.';
+      }
+    });
+
+    document.getElementById('btnGenQr').addEventListener('click', async () => {
+      if (!deudaActual) return;
+      const body = { debt_id: deudaActual.id, amount: deudaActual.amount, customer_ref: deudaActual.customer_ref };
+      const qrResult = document.getElementById('qrResult');
+      qrResult.innerHTML = 'Generando QR...';
+      document.getElementById('pagoSection').style.display = 'none';
+      try {
+        const res = await fetch(base + '/qr/generate_from_debt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const json = await res.json();
+        if (json.qr_url) {
+          qrResult.innerHTML = `<img src="${json.qr_url}" alt="QR" width="250"><br>QR URL: <a href="${json.qr_url}" target="_blank">${json.qr_url}</a>`;
+          document.getElementById('pagoSection').style.display = 'block';
+        } else {
+          qrResult.textContent = 'No se recibió qr_url. Respuesta: ' + JSON.stringify(json);
+        }
+      } catch (e) {
+        qrResult.textContent = 'Error: ' + e.message;
+      }
+    });
+
+    document.getElementById('btnPay').addEventListener('click', async () => {
+      if (!deudaActual) return;
+      const body = { debt_id: deudaActual.id, amount: deudaActual.amount };
+      const payResult = document.getElementById('payResult');
+      payResult.innerHTML = 'Procesando pago...';
+      try {
+        const res = await fetch(base + '/pagos/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const json = await res.json();
+        if (json.receipt_url) {
+          payResult.innerHTML = `Pago registrado. <a href="${json.receipt_url}" target="_blank">Abrir recibo</a><br>Transaction ID: ${json.transaction_id}`;
+        } else {
+          payResult.textContent = 'No se recibió receipt_url. Respuesta: ' + JSON.stringify(json);
+        }
+      } catch (e) {
+        payResult.textContent = 'Error: ' + e.message;
+      }
+    });
+  </script>
+</body>
+
+</html>
