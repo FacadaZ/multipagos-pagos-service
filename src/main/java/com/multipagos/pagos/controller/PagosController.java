@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.Map;
 import com.multipagos.pagos.client.LookupRequestDTO;
 import com.multipagos.pagos.client.DebtDTO;
+import com.multipagos.pagos.dto.KpiReportDTO;
+import org.springframework.format.annotation.DateTimeFormat;
 
 @RestController
 @RequestMapping("/pagos")
@@ -79,5 +81,18 @@ public class PagosController {
         } catch (Exception e) {
             return ResponseEntity.status(500).build();
         }
+    }
+
+    @GetMapping("/report/kpis")
+    public ResponseEntity<KpiReportDTO> getKpiReport(
+            @RequestParam(required = false) Long company_id,
+            @RequestParam(required = false) String service_id,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) String date_from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) String date_to,
+            @RequestParam(required = false, defaultValue = "company") String group_by,
+            @RequestParam(required = false, defaultValue = "day") String granularity) {
+        KpiReportDTO kpis = pagosService.getKpiReport(company_id, service_id, date_from, date_to, group_by,
+                granularity);
+        return ResponseEntity.ok(kpis);
     }
 }

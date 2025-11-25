@@ -9,6 +9,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import com.multipagos.pagos.client.DebtDTO;
+import com.multipagos.pagos.dto.KpiReportDTO;
+import java.time.LocalDateTime;
+import java.util.Map;
 
 @Service
 public class PagosService {
@@ -73,5 +76,54 @@ public class PagosService {
 
     public DebtDTO lookupDebtByService(String customerRef, String serviceId, String tenantId) {
         return deudasClient.lookupDebtByService(customerRef, serviceId, tenantId);
+    }
+
+    public KpiReportDTO getKpiReport(Long companyId, String serviceId, String dateFrom, String dateTo, String groupBy,
+            String granularity) {
+        // Filtros básicos
+        List<Transaccion> transacciones = transaccionRepository.findAll();
+        // Filtrar por company_id
+        if (companyId != null) {
+            transacciones = transacciones.stream()
+                    .filter(t -> t.getIdArrendatario() != null && t.getIdArrendatario().equals(companyId)).toList();
+        }
+        // Filtrar por service_id
+        if (serviceId != null) {
+            transacciones = transacciones.stream()
+                    .filter(t -> t.getIdServicio() != null && t.getIdServicio().equals(serviceId)).toList();
+        }
+        // Filtrar por fechas
+        if (dateFrom != null) {
+            LocalDateTime from = LocalDateTime.parse(dateFrom);
+            transacciones = transacciones.stream()
+                    .filter(t -> t.getFechaCreacion() != null && !t.getFechaCreacion().isBefore(from)).toList();
+        }
+        if (dateTo != null) {
+            LocalDateTime to = LocalDateTime.parse(dateTo);
+            transacciones = transacciones.stream()
+                    .filter(t -> t.getFechaCreacion() != null && !t.getFechaCreacion().isAfter(to)).toList();
+        }
+
+        long totalPagos = transacciones.size();
+        long pagosExitosos = transacciones.stream()
+                .filter(t -> "PAID".equalsIgnoreCase(t.getEstado()) || "APROBADO".equalsIgnoreCase(t.getEstado()))
+                .count();
+        double tasaAprobacion = totalPagos > 0 ? (double) pagosExitosos / totalPagos : 0.0;
+        double montoTotalPagado = transacciones.stream()
+                .filter(t -> "PAID".equalsIgnoreCase(t.getEstado()) || "APROBADO".equalsIgnoreCase(t.getEstado()))
+                .mapToDouble(t -> t.getMonto() != null ? t.getMonto() : 0.0).sum();
+
+        Map<String, Long> conteoPorEstado = transacciones.stream().collect(
+                java.util.stream.Collectors.groupingBy(
+                        t -> t.getEstado() != null ? t.getEstado() : "UNKNOWN",
+                        java.util.stream.Collectors.counting()));
+
+        KpiReportDTO dto = new KpiReportDTO();
+        dto.setTotalPagos(totalPagos);
+        dto.setPagosExitosos(pagosExitosos);
+        dto.setTasaAprobacion(tasaAprobacion);
+        dto.setMontoTotalPagado(montoTotalPagado);
+        dto.setConteoPorEstado(conteoPorEstado);
+        return dto;
     }
 }
